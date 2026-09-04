@@ -30,31 +30,28 @@ exports.handler = async function(event, context) {
             return { 
                 statusCode: 400, 
                 headers: { 'Access-Control-Allow-Origin': '*' },
-                body: JSON.stringify({ error: 'Format Gmail tidak valid, Bos.' }) 
+                body: JSON.stringify({ error: 'Format email tidak valid, Bos.' }) 
             };
         }
 
-        // Tanpa rate limit, generate token baru tiap request
         const token = crypto.randomBytes(32).toString('hex');
         const siteUrl = event.headers['origin'] || `https://${event.headers.host}`;
-        
-        // Link internal untuk proses verifikasi akhir
         const verifyEndpoint = `${siteUrl}/api/activate-premium?token=${token}&email=${encodeURIComponent(email)}`;
-        
-        // Format link ala alightcreative persis seperti di video referensi
         const alightCreativeLink = `https://alight-creative.firebaseapp.com/__/auth/link?token=${token}&email=${encodeURIComponent(email)}&redirect=${encodeURIComponent(verifyEndpoint)}`;
 
-        // Konfigurasi pengiriman email SMTP
+        // Konfigurasi SMTP Universal (Support Custom Domain, Outlook, Zoho, dll via Environment Variables)
         const transporter = nodemailer.createTransport({
-            service: 'gmail',
+            host: process.env.SMTP_HOST || 'smtp.gmail.com',       // Bisa diisi smtp.mailgun.org, smtp.zoho.com, dll
+            port: parseInt(process.env.SMTP_PORT) || 587,          // 465 untuk SSL, 587 untuk TLS
+            secure: process.env.SMTP_SECURE === 'true',            // true jika port 465, false jika 587
             auth: {
-                user: process.env.SMTP_EMAIL || 'your-email@gmail.com',
-                pass: process.env.SMTP_PASSWORD || 'your-app-password'
+                user: process.env.SMTP_EMAIL,                      // Email pengirim Anda
+                pass: process.env.SMTP_PASSWORD                    // Password / App Password email pengirim
             }
         });
 
         const mailOptions = {
-            from: '"Alight Creative" <noreply@alight-creative.firebaseapp.com>',
+            from: process.env.SMTP_FROM || '"Alight Creative" <noreply@alight-creative.firebaseapp.com>',
             to: email,
             subject: `Sign in to Alight Creative requested at ${new Date().toUTCString()}`,
             html: `
@@ -70,19 +67,15 @@ exports.handler = async function(event, context) {
             `
         };
 
-        try {
-            await transporter.sendMail(mailOptions);
-        } catch (smtpErr) {
-            console.log('[SMTP Log Warning]:', smtpErr.message);
-        }
+        await transporter.sendMail(mailOptions);
 
         return {
             statusCode: 200,
             headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
             body: JSON.stringify({
                 status: 'success',
-                message: 'Magic link berhasil dikirim ke Gmail target, Bos.',
-                alight_creative_link: alightCreativeLink // Disediakan untuk kemudahan testing langsung
+                message: 'Magic link berhasil dikirim ke email target, Bos.',
+                alight_creative_link: alightCreativeLink
             })
         };
 
@@ -90,8 +83,7 @@ exports.handler = async function(event, context) {
         return { 
             statusCode: 500, 
             headers: { 'Access-Control-Allow-Origin': '*' },
-            body: JSON.stringify({ error: 'Internal Server Error', details: error.message }) 
+            body: JSON.stringify({ error: 'Gagal mengirim email via SMTP', details: error.message }) 
         };
     }
 };
-          
